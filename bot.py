@@ -11,7 +11,6 @@ def main():
     application = create_application()
 
     print("✅ Бот запущен и готов к работе!")
-    print("⏹️  Для остановки нажмите Ctrl+C")
 
     # Запускаем бота в режиме опроса (polling)
     application.run_polling()

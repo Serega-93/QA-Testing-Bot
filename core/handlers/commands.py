@@ -1,23 +1,47 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from utils.keyboards import create_main_menu_keyboard
+from core.services.stats import StatsService
+from utils.feedback import get_feedback
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Упрощенное главное меню без статистики
+    Главное меню СО статистикой пользователя
     """
     user = update.message.from_user
+
+    # Инициализируем пользователя в системе
+    StatsService.init_user(user.id, user.username, user.first_name)
+
+    # ОТЛАДКА: выводим все данные
+    from data.storage import storage
+    storage.debug_print_all_data()
+
+    # Получаем статистику
+    stats = StatsService.get_user_stats(user.id)
+    success_rate = StatsService.calculate_success_rate(stats)
+
+    # Формируем блок статистики
+    if stats and stats.total_tests > 0:
+        stats_section = f"""
+📊 Ваша статистика:
+🎯 Тестов пройдено: {stats.total_tests}
+🏆 Лучший результат: {stats.best_score}/30
+📈 Успешность: {success_rate}%
+"""
+    else:
+        stats_section = "📊 Статистика: пройдите первый тест!"
 
     welcome_text = f"""
 Привет, {user.first_name}! 👋
 
 Я - демо-бот для проверки знаний QA. 
 
-Проверьте свои знания в области тестирования программного обеспечения и узнайте что-то новое!
+{stats_section}
 
 📚 Что вас ждет:
-• 5 вопросов по основам QA
+• 30 вопросов по основам QA
 • Подробные объяснения к каждому ответу
 • Статистика ваших результатов
 
@@ -67,16 +91,3 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cancel_test_from_button(fake_query, context)
     else:
         await update.message.reply_text("❌ Нечего отменять. Вы не в процессе тестирования.")
-
-
-def get_feedback(score, total):
-    """
-    Возвращает текст обратной связи в зависимости от результата
-    """
-    percentage = score / total
-    if percentage >= 0.8:
-        return "Отличный результат! Вы хорошо разбираетесь в основах QA!"
-    elif percentage >= 0.6:
-        return "Хороший результат! Продолжайте изучать материалы!"
-    else:
-        return "Есть над чем поработать! Рекомендуем изучить основы тестирования."

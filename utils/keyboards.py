@@ -32,7 +32,19 @@ def create_main_menu_keyboard():
     keyboard = [
         [InlineKeyboardButton("🎯 Начать тест", callback_data="start_test_from_menu")],
         [InlineKeyboardButton("📊 Моя статистика", callback_data="show_stats_from_menu")],
+        [InlineKeyboardButton("🔄 Сбросить статистику", callback_data="reset_stats_confirm")],
         [InlineKeyboardButton("🔄 Перезапустить бота", callback_data="restart_from_menu")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def create_confirmation_keyboard():
+    """
+    Создает клавиатуру для подтверждения опасных действий
+    """
+    keyboard = [
+        [InlineKeyboardButton("✅ Да, сбросить", callback_data="reset_stats_yes")],
+        [InlineKeyboardButton("❌ Нет, отмена", callback_data="reset_stats_no")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -54,6 +66,18 @@ def create_stats_keyboard():
     """
     keyboard = [
         [InlineKeyboardButton("🎯 Пройти тест", callback_data="start_test_from_menu")],
+        [InlineKeyboardButton("📋 Главное меню", callback_data="main_menu")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def create_level_selection_keyboard():
+    """
+    Создает клавиатуру для выбора уровня сложности
+    """
+    keyboard = [
+        [InlineKeyboardButton("👶 Junior", callback_data="level_junior")],
+        [InlineKeyboardButton("💪 Middle", callback_data="level_middle")],
         [InlineKeyboardButton("📋 Главное меню", callback_data="main_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)

@@ -207,3 +207,6 @@ marimo/_lsp/
 __marimo__/
 config.py
 config_*.py
+*.db
+*.sqlite
+*.sqlite3

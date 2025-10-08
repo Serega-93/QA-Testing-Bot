@@ -17,7 +17,7 @@ class QuizService:
 
     @staticmethod
     async def get_current_question(context):
-        """Возвращает текущий вопрос (статический - не зависит от экземпляра)"""
+        """Возвращает текущий вопрос"""
         current_index = context.user_data.get('current_question', 0)
         questions = context.user_data.get('questions', [])
 
@@ -28,7 +28,7 @@ class QuizService:
 
     @staticmethod
     async def process_answer(context, question_index, answer_index):
-        """Обрабатывает ответ пользователя (статический)"""
+        """Обрабатывает ответ пользователя"""
         questions = context.user_data['questions']
         question = questions[question_index]
 
@@ -41,8 +41,7 @@ class QuizService:
             result_text = "Правильно!"
         else:
             result_icon = "❌"
-            correct_answer_number = question['correct_answer'] + 1
-            result_text = f"Правильный ответ: {correct_answer_number}"
+            result_text = f"Не правильно!"
 
         # Формируем сообщение с результатом
         result_message = f"""{result_icon} Вопрос {question_index + 1}: {result_text}
