@@ -35,10 +35,12 @@ class StatsService:
     @staticmethod
     def calculate_level_success_rate(stats, level: str):
         """Рассчитывает процент успешных ответов для конкретного уровня"""
+        total_questions = 100  # Теперь 100 вопросов
+
         if level == "junior":
-            if stats and stats.junior_total_questions > 0:
-                return round((stats.junior_total_correct / stats.junior_total_questions) * 100)
+            if stats and stats.junior_best_score > 0:
+                return round((stats.junior_best_score / total_questions) * 100)
         elif level == "middle":
-            if stats and stats.middle_total_questions > 0:
-                return round((stats.middle_total_correct / stats.middle_total_questions) * 100)
+            if stats and stats.middle_best_score > 0:
+                return round((stats.middle_best_score / 100) * 100)
         return 0

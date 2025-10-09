@@ -42,8 +42,12 @@ class Storage:
                     last_test_date TEXT,
                     junior_tests INTEGER DEFAULT 0,
                     junior_best_score INTEGER DEFAULT 0,
+                    junior_total_correct INTEGER DEFAULT 0,
+                    junior_total_questions INTEGER DEFAULT 0,
                     middle_tests INTEGER DEFAULT 0,
                     middle_best_score INTEGER DEFAULT 0,
+                    middle_total_correct INTEGER DEFAULT 0,
+                    middle_total_questions INTEGER DEFAULT 0,
                     FOREIGN KEY (user_id) REFERENCES users (user_id)
                 )
             ''')
@@ -78,6 +82,7 @@ class Storage:
             tables = cursor.fetchall()
             print(f"✅ Созданные таблицы: {tables}")
             self._update_database_schema()
+            self.debug_check_table_columns()
 
             conn.commit()
 
@@ -94,34 +99,6 @@ class Storage:
             ''', (user.user_id, user.username, user.first_name, user.created_at))
             conn.commit()
 
-    def save_test_result(self, user_id: int, score: int, total_questions: int):
-        """Сохраняет результат теста и обновляет статистику"""
-        test_date = datetime.now().isoformat()
-
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-
-            # Сохраняем результат теста
-            cursor.execute('''
-                INSERT INTO test_results (user_id, score, total_questions, test_date)
-                VALUES (?, ?, ?, ?)
-            ''', (user_id, score, total_questions, test_date))
-
-            # Обновляем статистику пользователя
-            cursor.execute('''
-                INSERT OR REPLACE INTO user_stats 
-                (user_id, total_tests, best_score, total_correct_answers, total_questions_answered, last_test_date)
-                VALUES (
-                    ?,
-                    COALESCE((SELECT total_tests FROM user_stats WHERE user_id = ?), 0) + 1,
-                    MAX(COALESCE((SELECT best_score FROM user_stats WHERE user_id = ?), 0), ?),
-                    COALESCE((SELECT total_correct_answers FROM user_stats WHERE user_id = ?), 0) + ?,
-                    COALESCE((SELECT total_questions_answered FROM user_stats WHERE user_id = ?), 0) + ?,
-                    ?
-                )
-            ''', (user_id, user_id, user_id, score, user_id, score, user_id, total_questions, test_date))
-
-            conn.commit()
 
     def get_user_stats(self, user_id: int) -> Optional[UserStats]:
         """Возвращает статистику пользователя"""
@@ -132,15 +109,33 @@ class Storage:
             ''', (user_id,))
 
             row = cursor.fetchone()
+
+            print(f"🔍 DEBUG get_user_stats:")
+            print(f"   user_id: {user_id}")
+            print(f"   row found: {row is not None}")
             if row:
-                return UserStats(
+                print(f"   full row: {row}")
+                print(f"   middle_tests (index 10): {row[10]}")
+
+                stats = UserStats(
                     user_id=row[0],
                     total_tests=row[1],
                     best_score=row[2],
                     total_correct_answers=row[3],
                     total_questions_answered=row[4],
-                    last_test_date=row[5]
+                    last_test_date=row[5],
+                    junior_tests=row[6],
+                    junior_best_score=row[7],
+                    junior_total_correct=row[8],
+                    junior_total_questions=row[9],
+                    middle_tests=row[10],
+                    middle_best_score=row[11],
+                    middle_total_correct=row[12],
+                    middle_total_questions=row[13]
                 )
+                print(f"   created stats.middle_tests: {stats.middle_tests}")
+                return stats
+
             return None
 
     def get_user_achievements(self, user_id: int) -> List[Achievement]:
@@ -202,6 +197,9 @@ class Storage:
         """Сохраняет результат теста с учетом уровня сложности"""
         test_date = datetime.now().isoformat()
 
+        print(
+            f"🔍 DEBUG save_test_result_with_level: user_id={user_id}, score={score}, total={total_questions}, level={level}")
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
 
@@ -216,7 +214,8 @@ class Storage:
                 cursor.execute('''
                     INSERT OR REPLACE INTO user_stats 
                     (user_id, total_tests, best_score, total_correct_answers, total_questions_answered, 
-                     last_test_date, junior_tests, junior_best_score, junior_total_correct, junior_total_questions)
+                     last_test_date, junior_tests, junior_best_score, junior_total_correct, junior_total_questions,
+                     middle_tests, middle_best_score, middle_total_correct, middle_total_questions)
                     VALUES (
                         ?,
                         COALESCE((SELECT total_tests FROM user_stats WHERE user_id = ?), 0) + 1,
@@ -227,16 +226,23 @@ class Storage:
                         COALESCE((SELECT junior_tests FROM user_stats WHERE user_id = ?), 0) + 1,
                         MAX(COALESCE((SELECT junior_best_score FROM user_stats WHERE user_id = ?), 0), ?),
                         COALESCE((SELECT junior_total_correct FROM user_stats WHERE user_id = ?), 0) + ?,
-                        COALESCE((SELECT junior_total_questions FROM user_stats WHERE user_id = ?), 0) + ?
+                        COALESCE((SELECT junior_total_questions FROM user_stats WHERE user_id = ?), 0) + ?,
+                        COALESCE((SELECT middle_tests FROM user_stats WHERE user_id = ?), 0),
+                        COALESCE((SELECT middle_best_score FROM user_stats WHERE user_id = ?), 0),
+                        COALESCE((SELECT middle_total_correct FROM user_stats WHERE user_id = ?), 0),
+                        COALESCE((SELECT middle_total_questions FROM user_stats WHERE user_id = ?), 0)
                     )
                 ''', (user_id, user_id, user_id, score, user_id, score, user_id, total_questions,
-                      test_date, user_id, user_id, score, user_id, score, user_id, total_questions))
+                      test_date,
+                      user_id, user_id, score, user_id, score, user_id, total_questions,  # junior поля
+                      user_id, user_id, user_id, user_id))  # middle поля (оставляем как есть)
 
             elif level == "middle":
                 cursor.execute('''
                     INSERT OR REPLACE INTO user_stats 
                     (user_id, total_tests, best_score, total_correct_answers, total_questions_answered, 
-                     last_test_date, middle_tests, middle_best_score, middle_total_correct, middle_total_questions)
+                     last_test_date, junior_tests, junior_best_score, junior_total_correct, junior_total_questions,
+                     middle_tests, middle_best_score, middle_total_correct, middle_total_questions)
                     VALUES (
                         ?,
                         COALESCE((SELECT total_tests FROM user_stats WHERE user_id = ?), 0) + 1,
@@ -244,15 +250,22 @@ class Storage:
                         COALESCE((SELECT total_correct_answers FROM user_stats WHERE user_id = ?), 0) + ?,
                         COALESCE((SELECT total_questions_answered FROM user_stats WHERE user_id = ?), 0) + ?,
                         ?,
+                        COALESCE((SELECT junior_tests FROM user_stats WHERE user_id = ?), 0),
+                        COALESCE((SELECT junior_best_score FROM user_stats WHERE user_id = ?), 0),
+                        COALESCE((SELECT junior_total_correct FROM user_stats WHERE user_id = ?), 0),
+                        COALESCE((SELECT junior_total_questions FROM user_stats WHERE user_id = ?), 0),
                         COALESCE((SELECT middle_tests FROM user_stats WHERE user_id = ?), 0) + 1,
                         MAX(COALESCE((SELECT middle_best_score FROM user_stats WHERE user_id = ?), 0), ?),
                         COALESCE((SELECT middle_total_correct FROM user_stats WHERE user_id = ?), 0) + ?,
                         COALESCE((SELECT middle_total_questions FROM user_stats WHERE user_id = ?), 0) + ?
                     )
                 ''', (user_id, user_id, user_id, score, user_id, score, user_id, total_questions,
-                      test_date, user_id, user_id, score, user_id, score, user_id, total_questions))
+                      test_date,
+                      user_id, user_id, user_id, user_id,  # junior поля (оставляем как есть)
+                      user_id, user_id, score, user_id, score, user_id, total_questions))  # middle поля
 
             conn.commit()
+        print("✅ Статистика сохранена!")
 
     def _update_database_schema(self):
         """Обновляет схему базы данных добавляя недостающие колонки"""
@@ -275,6 +288,17 @@ class Storage:
                 except sqlite3.OperationalError:
                     # Колонка уже существует - это нормально
                     pass
+
+
+    def debug_check_table_columns(self):
+        """Проверяет какие колонки есть в таблице user_stats"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(user_stats)")
+            columns = cursor.fetchall()
+            print("🔍 Колонки таблицы user_stats:")
+            for col in columns:
+                print(f"   {col[1]} ({col[2]})")
 
 
 # Глобальный экземпляр хранилища

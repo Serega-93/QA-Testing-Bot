@@ -14,39 +14,54 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Инициализируем пользователя в системе
     StatsService.init_user(user.id, user.username, user.first_name)
 
-    # ОТЛАДКА: выводим все данные
-    from data.storage import storage
-    storage.debug_print_all_data()
-
     # Получаем статистику
     stats = StatsService.get_user_stats(user.id)
-    success_rate = StatsService.calculate_success_rate(stats)
 
-    # Формируем блок статистики
-    if stats and stats.total_tests > 0:
-        stats_section = f"""
-📊 Ваша статистика:
-🎯 Тестов пройдено: {stats.total_tests}
-🏆 Лучший результат: {stats.best_score}/30
-📈 Успешность: {success_rate}%
-"""
+    # Формируем блоки статистики для каждого уровня
+    junior_stats = ""
+    middle_stats = ""
+
+    if stats and (stats.junior_tests > 0 or stats.middle_tests > 0):
+        if stats.junior_tests > 0:
+            junior_success = StatsService.calculate_level_success_rate(stats, "junior")
+            junior_stats = f"""👶 Junior:
+    • Тестов: {stats.junior_tests}
+    • Правильных ответов: {stats.junior_total_correct}/{stats.junior_total_questions}
+    • Успешность: {junior_success}%"""
+
+        if stats.middle_tests > 0:
+            middle_success = StatsService.calculate_level_success_rate(stats, "middle")
+            middle_stats = f"""💪 Middle:
+    • Тестов: {stats.middle_tests}  
+    • Лучший результат: {stats.middle_best_score}/100
+    • Успешность: {middle_success}%"""
+
+        # Правильное объединение с одним отступом
+        if junior_stats and middle_stats:
+            stats_section = f"""📊 Ваша статистика:
+
+    {junior_stats}
+
+    {middle_stats}"""
+        else:
+            stats_section = f"""📊 Ваша статистика:
+
+    {junior_stats}{middle_stats}"""
     else:
         stats_section = "📊 Статистика: пройдите первый тест!"
 
-    welcome_text = f"""
-Привет, {user.first_name}! 👋
+    welcome_text = f"""Привет, {user.first_name}! 👋
 
-Я - демо-бот для проверки знаний QA. 
+Я бот для проверки знаний QA.
 
 {stats_section}
 
 📚 Что вас ждет:
-• 30 вопросов по основам QA
+• 100 вопросов по основам QA
 • Подробные объяснения к каждому ответу
 • Статистика ваших результатов
 
-Готовы начать? 🚀
-    """
+Готовы начать? 🚀"""
 
     await update.message.reply_text(
         welcome_text,

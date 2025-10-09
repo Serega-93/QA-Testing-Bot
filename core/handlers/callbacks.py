@@ -2,7 +2,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 import asyncio
 from utils.feedback import get_feedback
-from utils.keyboards import create_main_menu_keyboard, create_stats_keyboard, create_quiz_keyboard
+from utils.keyboards import create_main_menu_keyboard, create_quiz_keyboard
 from core.services.quiz import QuizService
 from core.services.stats import StatsService
 from data.database import load_questions
@@ -57,11 +57,11 @@ async def start_test_from_menu(query, context):
     level_selection_text = """
 🎯 Выберите уровень сложности:
 
-👶 **Junior**
+👶 Junior
 • Неограниченные попытки
 • Подходит для начинающих
 
-💪 **Middle**  
+💪 Middle
 • 1 попытка на вопрос
 • Ошибка = конец теста
 • Для проверки реальных знаний!
@@ -92,7 +92,7 @@ async def start_junior_quiz(query, context):
     })
 
     junior_text = """
-👶 Режим: **Junior**
+👶 Режим: Junior
 
 Учитесь в своем темпе! Ошибаться - это нормально! 📚
 
@@ -120,7 +120,7 @@ async def start_middle_quiz(query, context):
     })
 
     middle_text = """
-💪 Режим: **Middle**
+💪 Режим: Middle
 
 Всего 1 попытка на вопрос! Ошибка = конец теста! ⚡
 
@@ -204,42 +204,44 @@ async def main_menu(query, context):
     if stats and (stats.junior_tests > 0 or stats.middle_tests > 0):
         if stats.junior_tests > 0:
             junior_success = StatsService.calculate_level_success_rate(stats, "junior")
-            junior_stats = f"""
-👶 **Junior:**
-• Тестов: {stats.junior_tests}
-• Лучший: {stats.junior_best_score}/30
-• Успешность: {junior_success}%
-"""
+            junior_stats = f"""👶 Junior:
+    • Тестов: {stats.junior_tests}
+    • Правильных ответов: {stats.junior_total_correct}/{stats.junior_total_questions}
+    • Успешность: {junior_success}%"""
 
         if stats.middle_tests > 0:
             middle_success = StatsService.calculate_level_success_rate(stats, "middle")
-            middle_stats = f"""
-💪 **Middle:**
-• Тестов: {stats.middle_tests}  
-• Лучший: {stats.middle_best_score}/30
-• Успешность: {middle_success}%
-"""
+            middle_stats = f"""💪 Middle:
+    • Тестов: {stats.middle_tests}  
+    • Лучший результат: {stats.middle_best_score}/100
+    • Успешность: {middle_success}%"""
 
-        stats_section = f"""
-📊 **Ваша статистика:**
-{junior_stats}{middle_stats}
-"""
+        # Правильное объединение с одним отступом
+        if junior_stats and middle_stats:
+            stats_section = f"""📊 Ваша статистика:
+
+    {junior_stats}
+
+    {middle_stats}"""
+        else:
+            stats_section = f"""📊 Ваша статистика:
+
+    {junior_stats}{middle_stats}"""
     else:
         stats_section = "📊 Статистика: пройдите первый тест!"
 
-    welcome_text = f"""
-Привет, {user.first_name}! 👋
+    welcome_text = f"""Привет, {user.first_name}! 👋
 
-Я - демо-бот для проверки знаний QA. 
+Я бот для проверки знаний QA.
 
 {stats_section}
 
-🎯 **Доступные режимы:**
-• 👶 Junior - учитесь в своем темпе
-• 💪 Middle - 1 попытка, проверка знаний
+📚 Что вас ждет:
+• 100 вопросов по основам QA
+• Подробные объяснения к каждому ответу
+• Статистика ваших результатов
 
-Готовы начать? 🚀
-    """
+Готовы начать? 🚀"""
 
     await query.edit_message_text(
         welcome_text,
@@ -325,7 +327,7 @@ async def stats_from_menu(query, context):
 {get_feedback(last_score, last_total)}
         """
 
-    await query.edit_message_text(stats_text, reply_markup=create_stats_keyboard())
+    await main_menu(query, context)
 
 
 async def process_answer(query, data, context):
