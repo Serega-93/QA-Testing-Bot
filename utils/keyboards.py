@@ -69,3 +69,14 @@ def create_level_selection_keyboard():
         [InlineKeyboardButton("📋 Главное меню", callback_data="main_menu")]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+def create_stats_keyboard():
+    """
+    Создает клавиатуру для страницы статистики
+    """
+    keyboard = [
+        [InlineKeyboardButton("🎯 Пройти тест", callback_data="start_test_from_menu")],
+        [InlineKeyboardButton("📋 Главное меню", callback_data="main_menu")]
+    ]
+    return InlineKeyboardMarkup(keyboard)

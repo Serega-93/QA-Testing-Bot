@@ -133,7 +133,7 @@ async def start_middle_quiz(query, context):
 
 async def show_question_from_menu(query, context):
     """
-    Показывает вопрос при старте из меню
+    Показывает первый вопрос ВСЕГДА новым сообщением
     """
     result = await QuizService.get_current_question(context)
 
@@ -154,10 +154,12 @@ async def show_question_from_menu(query, context):
     if level == 'middle':
         question_text += "\n\n⚡ Всего 1 попытка!"
 
-    await query.edit_message_text(
+    # ВСЕГДА отправляем НОВОЕ сообщение с вопросом
+    message = await query.message.reply_text(
         question_text,
         reply_markup=create_quiz_keyboard(question, current_index)
     )
+    context.user_data['last_question_message_id'] = message.message_id
 
 
 async def cancel_test_from_button(query, context):
@@ -185,9 +187,10 @@ async def cancel_test_from_button(query, context):
 
 async def main_menu(query, context):
     """
-    Возвращает в главное меню из любого места СО РАЗДЕЛЬНОЙ СТАТИСТИКОЙ
+    Возвращает в главное меню из любого места С ПОЛНОЙ ОЧИСТКОЙ ЧАТА
     """
     from core.services.stats import StatsService
+    from utils.keyboards import create_main_menu_keyboard
 
     user = query.from_user
 
@@ -205,28 +208,27 @@ async def main_menu(query, context):
         if stats.junior_tests > 0:
             junior_success = StatsService.calculate_level_success_rate(stats, "junior")
             junior_stats = f"""👶 Junior:
-    • Тестов: {stats.junior_tests}
-    • Правильных ответов: {stats.junior_total_correct}/{stats.junior_total_questions}
-    • Успешность: {junior_success}%"""
+• Тестов: {stats.junior_tests}
+• Правильных ответов: {stats.junior_total_correct}/{stats.junior_total_questions}
+• Успешность: {junior_success}%"""
 
         if stats.middle_tests > 0:
             middle_success = StatsService.calculate_level_success_rate(stats, "middle")
             middle_stats = f"""💪 Middle:
-    • Тестов: {stats.middle_tests}  
-    • Лучший результат: {stats.middle_best_score}/100
-    • Успешность: {middle_success}%"""
+• Тестов: {stats.middle_tests}  
+• Лучший результат: {stats.middle_best_score}/100
+• Успешность: {middle_success}%"""
 
-        # Правильное объединение с одним отступом
         if junior_stats and middle_stats:
             stats_section = f"""📊 Ваша статистика:
 
-    {junior_stats}
+{junior_stats}
 
-    {middle_stats}"""
+{middle_stats}"""
         else:
             stats_section = f"""📊 Ваша статистика:
 
-    {junior_stats}{middle_stats}"""
+{junior_stats}{middle_stats}"""
     else:
         stats_section = "📊 Статистика: пройдите первый тест!"
 
@@ -238,11 +240,36 @@ async def main_menu(query, context):
 
 📚 Что вас ждет:
 • 100 вопросов по основам QA
-• Подробные объяснения к каждому ответу
+• Подробные объяснения к каждому ответу  
 • Статистика ваших результатов
 
 Готовы начать? 🚀"""
 
+    # ПОЛНАЯ ОЧИСТКА ВСЕХ СООБЩЕНИЙ БОТА
+    try:
+        chat_id = query.message.chat_id
+        current_message_id = query.message.message_id
+
+        print(f"🔍 Полная очистка чата: текущее сообщение ID: {current_message_id}")
+
+        # Удаляем ВСЕ предыдущие сообщения бота (увеличиваем диапазон)
+        deleted_count = 0
+        for i in range(1, 51):  # увеличиваем до 50 сообщений
+            try:
+                await context.bot.delete_message(chat_id, current_message_id - i)
+                deleted_count += 1
+                print(f"🔍 Удалили сообщение ID: {current_message_id - i}")
+            except Exception as e:
+                # Пропускаем ошибки "сообщение не найдено"
+                if "message to delete not found" not in str(e) and "message can't be deleted" not in str(e):
+                    print(f"⚠️ Ошибка удаления {current_message_id - i}: {e}")
+
+        print(f"✅ Удалено сообщений: {deleted_count}")
+
+    except Exception as e:
+        print(f"⚠️ Не удалось очистить чат: {e}")
+
+    # РЕДАКТИРУЕМ текущее сообщение (оно осталось после очистки)
     await query.edit_message_text(
         welcome_text,
         reply_markup=create_main_menu_keyboard()
@@ -266,7 +293,8 @@ async def restart_from_button(query, context):
     restart_text = """
 🔄 Тест начат заново!
 
-Весь прогресс сброшен.\n Удачи! 🍀
+Весь прогресс сброшен.
+Удачи! 🍀
     """
 
     # Редактируем сообщение с результатом
@@ -310,6 +338,7 @@ async def stats_from_menu(query, context):
     """
     Показывает статистику из главного меню
     """
+    from utils.keyboards import create_stats_keyboard
 
     last_score = context.user_data.get('last_score')
     last_total = context.user_data.get('last_total')
@@ -327,12 +356,16 @@ async def stats_from_menu(query, context):
 {get_feedback(last_score, last_total)}
         """
 
-    await main_menu(query, context)
+    # ЗАМЕНИТЬ: await main_menu(query, context) на:
+    await query.edit_message_text(
+        stats_text,
+        reply_markup=create_stats_keyboard()
+    )
 
 
 async def process_answer(query, data, context):
     """
-    Обрабатывает ответ пользователя с учетом уровня сложности
+    Обрабатывает ответ пользователя - результат выше, вопрос всегда последний
     """
     parts = data.split('_')
     question_index = int(parts[1])
@@ -363,6 +396,7 @@ async def process_answer(query, data, context):
 
 💡 {question['explanation']}"""
 
+    # 1. Сначала отправляем результат ответа
     await query.message.reply_text(result_message)
 
     # Переходим к следующему вопросу
@@ -372,50 +406,14 @@ async def process_answer(query, data, context):
         await finish_test_from_callback(query, context)
         return
 
+    # 2. Ждем немного и показываем СЛЕДУЮЩИЙ вопрос (новое сообщение)
     await asyncio.sleep(1)
-    await show_next_question(query, context)
+    await show_next_question_always_new(query, context)
 
 
-async def finish_middle_test_early(query, context, questions_answered):
+async def show_next_question_always_new(query, context):
     """
-    Завершает тест Middle при неправильном ответе
-    """
-    from utils.keyboards import create_restart_keyboard
-
-    score = context.user_data['score']
-    level = context.user_data.get('level', 'middle')
-
-    result_text = f"""
-💥 Тест завершен!
-
-В режиме Middle всего одна попытка на вопрос.
-
-📊 Ваш результат:
-• Правильных ответов: {score}/{questions_answered}
-• Вопросов пройдено: {questions_answered}
-
-💡 Попробуйте режим Junior для обучения!
-    """
-
-    # СОХРАНЯЕМ РЕЗУЛЬТАТ ТЕСТА С УЧЕТОМ УРОВНЯ
-    StatsService.save_test_result(
-        user_id=query.from_user.id,
-        score=score,
-        total_questions=questions_answered,
-        level=level
-    )
-
-    # Очищаем данные
-    for key in ['current_question', 'score', 'questions']:
-        if key in context.user_data:
-            del context.user_data[key]
-
-    await query.message.reply_text(result_text, reply_markup=create_restart_keyboard())
-
-
-async def show_next_question(query, context):
-    """
-    Показывает следующий вопрос
+    Показывает следующий вопрос ВСЕГДА новым сообщением
     """
     result = await QuizService.get_current_question(context)
 
@@ -436,7 +434,7 @@ async def show_next_question(query, context):
     if level == 'middle':
         question_text += "\n\n⚡ Всего 1 попытка!"
 
-    # Отправляем новое сообщение с вопросом
+    # ВСЕГДА отправляем НОВОЕ сообщение с вопросом
     message = await query.message.reply_text(
         question_text,
         reply_markup=create_quiz_keyboard(question, current_index)
@@ -481,7 +479,51 @@ async def finish_test_from_callback(query, context):
             del context.user_data[key]
 
     # Отправляем результат с кнопками
-    await query.message.reply_text(result_text, reply_markup=create_restart_keyboard())
+    await query.message.reply_text(
+        result_text,
+        reply_markup=create_restart_keyboard(),
+        parse_mode='Markdown'
+    )
+
+async def finish_middle_test_early(query, context, questions_answered):
+    """
+    Завершает тест Middle при неправильном ответе
+    """
+    from utils.keyboards import create_restart_keyboard
+
+    score = context.user_data['score']
+    level = context.user_data.get('level', 'middle')
+
+    result_text = f"""
+💥 Тест завершен!
+
+В режиме Middle всего одна попытка на вопрос.
+
+📊 Ваш результат:
+• Правильных ответов: {score}/{questions_answered}
+• Вопросов пройдено: {questions_answered}
+
+💡 Попробуйте режим Junior для обучения!
+    """
+
+    # СОХРАНЯЕМ РЕЗУЛЬТАТ ТЕСТА С УЧЕТОМ УРОВНЯ
+    StatsService.save_test_result(
+        user_id=query.from_user.id,
+        score=score,
+        total_questions=questions_answered,
+        level=level
+    )
+
+    # Очищаем данные
+    for key in ['current_question', 'score', 'questions']:
+        if key in context.user_data:
+            del context.user_data[key]
+
+    await query.message.reply_text(
+        result_text,
+        reply_markup=create_restart_keyboard(),
+        parse_mode='Markdown'
+    )
 
 
 async def confirm_reset_stats(query, context):
@@ -491,7 +533,7 @@ async def confirm_reset_stats(query, context):
     from utils.keyboards import create_confirmation_keyboard
 
     warning_text = """
-⚠️ **Внимание! Вы собираетесь сбросить всю статистику**
+⚠️ Внимание! Вы собираетесь сбросить всю статистику**
 
 Это действие:
 • Удалит всю историю тестов
@@ -521,7 +563,7 @@ async def reset_stats(query, context):
 
     # Показываем сообщение об успехе
     success_text = """
-🗑️ **Статистика сброшена!**
+🗑️ Статистика сброшена!
 
 Вся ваша история тестов и достижения удалены.
 
