@@ -217,9 +217,6 @@ class Storage:
                     ''', (user_id, score, total_questions, test_date))
                 print(f"✅ Результат теста сохранен в test_results")
 
-                # ДЛЯ MIDDLE РЕЖИМА: всегда считаем что тест на 100 вопросов
-                middle_total_questions = 100 if level == "middle" else 0
-
                 # Обновляем статистику в зависимости от уровня
                 if level == "junior":
                     print(f"🔍 Обновляем статистику JUNIOR...")
@@ -237,8 +234,8 @@ class Storage:
                                 ?,
                                 COALESCE((SELECT junior_tests FROM user_stats WHERE user_id = ?), 0) + 1,
                                 MAX(COALESCE((SELECT junior_best_score FROM user_stats WHERE user_id = ?), 0), ?),
-                                COALESCE((SELECT junior_total_correct FROM user_stats WHERE user_id = ?), 0) + ?,
-                                COALESCE((SELECT junior_total_questions FROM user_stats WHERE user_id = ?), 0) + ?,
+                                ?,  -- junior_total_correct: результат последнего теста
+                                ?,  -- junior_total_questions: количество вопросов последнего теста
                                 COALESCE((SELECT middle_tests FROM user_stats WHERE user_id = ?), 0),
                                 COALESCE((SELECT middle_best_score FROM user_stats WHERE user_id = ?), 0),
                                 COALESCE((SELECT middle_total_correct FROM user_stats WHERE user_id = ?), 0),
@@ -246,7 +243,9 @@ class Storage:
                             )
                         ''', (user_id, user_id, user_id, score, user_id, score, user_id, total_questions,
                               test_date,
-                              user_id, user_id, score, user_id, score, user_id, total_questions,  # junior поля
+                              user_id, user_id, score,
+                              score,  # junior_total_correct = результат последнего теста
+                              total_questions,  # junior_total_questions = количество вопросов последнего теста
                               user_id, user_id, user_id, user_id))  # middle поля (оставляем как есть)
                     print(f"✅ Статистика JUNIOR обновлена")
 
@@ -270,10 +269,10 @@ class Storage:
                                 COALESCE((SELECT junior_total_questions FROM user_stats WHERE user_id = ?), 0),
                                 COALESCE((SELECT middle_tests FROM user_stats WHERE user_id = ?), 0) + 1,
                                 MAX(COALESCE((SELECT middle_best_score FROM user_stats WHERE user_id = ?), 0), ?),
-                                ?,  -- middle_total_correct: НЕ накапливаем, а показываем результат последнего теста
+                                ?,  -- middle_total_correct: результат последнего теста
                                 ?   -- middle_total_questions: всегда 100 для Middle
                             )
-                        ''', (user_id, user_id, user_id, score, user_id, score, user_id, middle_total_questions,
+                        ''', (user_id, user_id, user_id, score, user_id, score, user_id, 100,
                               test_date,
                               user_id, user_id, user_id, user_id,  # junior поля (оставляем как есть)
                               user_id, user_id, score,

@@ -25,10 +25,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             junior_success = StatsService.calculate_level_success_rate(stats, "junior")
             junior_best_percentage = StatsService.calculate_best_score_percentage(stats, "junior")
             junior_stats = f"""🎓 Junior:
-    • Тестов: {stats.junior_tests}
-    • Правильных ответов: {stats.junior_total_correct}/{stats.junior_total_questions}
-    • Успешность: {junior_success}%
-    • Лучший результат: {stats.junior_best_score}/100 ({junior_best_percentage}%)"""
+        • Тестов: {stats.junior_tests}
+        • Последний результат: {stats.junior_total_correct}/{stats.junior_total_questions}
+        • Успешность: {junior_success}%
+        • Лучший результат: {stats.junior_best_score}/100 ({junior_best_percentage}%)"""
 
         if stats.middle_tests > 0:
             middle_success = StatsService.calculate_level_success_rate(stats, "middle")
