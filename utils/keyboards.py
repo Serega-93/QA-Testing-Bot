@@ -64,7 +64,7 @@ def create_level_selection_keyboard():
     Создает клавиатуру для выбора уровня сложности
     """
     keyboard = [
-        [InlineKeyboardButton("👶 Junior", callback_data="level_junior")],
+        [InlineKeyboardButton("🎓 Junior", callback_data="level_junior")],
         [InlineKeyboardButton("💪 Middle", callback_data="level_middle")],
         [InlineKeyboardButton("📋 Главное меню", callback_data="main_menu")]
     ]

@@ -2,14 +2,11 @@ from telegram import Update
 from telegram.ext import ContextTypes
 import asyncio
 from utils.feedback import get_feedback
-from utils.keyboards import create_main_menu_keyboard, create_quiz_keyboard
+from utils.keyboards import create_quiz_keyboard
 from core.services.quiz import QuizService
 from core.services.stats import StatsService
 from data.database import load_questions
-
-
-# Создаем экземпляр сервиса
-quiz_service = QuizService()
+from data.storage import storage
 
 
 async def handle_button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -57,14 +54,13 @@ async def start_test_from_menu(query, context):
     level_selection_text = """
 🎯 Выберите уровень сложности:
 
-👶 Junior
+🎓 Junior:
 • Неограниченные попытки
 • Подходит для начинающих
 
-💪 Middle
-• 1 попытка на вопрос
+💪 Middle:
+• 1 попытка на ответ
 • Ошибка = конец теста
-• Для проверки реальных знаний!
 
 Выберите уровень:
     """
@@ -92,14 +88,19 @@ async def start_junior_quiz(query, context):
     })
 
     junior_text = """
-👶 Режим: Junior
+🎓 Режим: Junior
 
 Учитесь в своем темпе! Ошибаться - это нормально! 📚
 
 Удачи! 🍀
     """
 
-    await query.edit_message_text(junior_text)
+    # Редактируем текущее сообщение и СОХРАНЯЕМ его ID для удаления
+    await query.edit_message_text(junior_text, reply_markup=None)
+    storage.track_message(query.from_user.id, query.message.message_id)  # ← ДОБАВЛЕНО
+
+    # Ждем немного перед началом теста
+    await asyncio.sleep(1.5)
     await show_question_from_menu(query, context)
 
 
@@ -122,12 +123,17 @@ async def start_middle_quiz(query, context):
     middle_text = """
 💪 Режим: Middle
 
-Всего 1 попытка на вопрос! Ошибка = конец теста! ⚡
+Всего 1 попытка на ответ! Ошибка = конец теста! ⚡
 
 Покажите свои настоящие знания! 🚀
     """
 
-    await query.edit_message_text(middle_text)
+    # Редактируем текущее сообщение и СОХРАНЯЕМ его ID для удаления
+    await query.edit_message_text(middle_text, reply_markup=None)
+    storage.track_message(query.from_user.id, query.message.message_id)  # ← ДОБАВЛЕНО
+
+    # Ждем немного перед началом теста
+    await asyncio.sleep(1.5)
     await show_question_from_menu(query, context)
 
 
@@ -159,6 +165,9 @@ async def show_question_from_menu(query, context):
         question_text,
         reply_markup=create_quiz_keyboard(question, current_index)
     )
+
+    # СОХРАНЯЕМ ID сообщения
+    storage.track_message(query.from_user.id, message.message_id)
     context.user_data['last_question_message_id'] = message.message_id
 
 
@@ -187,18 +196,18 @@ async def cancel_test_from_button(query, context):
 
 async def main_menu(query, context):
     """
-    Возвращает в главное меню из любого места С ПОЛНОЙ ОЧИСТКОЙ ЧАТА
+    Возвращает в главное меню с БЫСТРОЙ очисткой
     """
-    from core.services.stats import StatsService
     from utils.keyboards import create_main_menu_keyboard
 
     user = query.from_user
+    user_id = user.id
 
     # Инициализируем пользователя
-    StatsService.init_user(user.id, user.username, user.first_name)
+    StatsService.init_user(user_id, user.username, user.first_name)
 
     # Получаем статистику
-    stats = StatsService.get_user_stats(user.id)
+    stats = StatsService.get_user_stats(user_id)
 
     # Формируем блоки статистики для каждого уровня
     junior_stats = ""
@@ -207,17 +216,21 @@ async def main_menu(query, context):
     if stats and (stats.junior_tests > 0 or stats.middle_tests > 0):
         if stats.junior_tests > 0:
             junior_success = StatsService.calculate_level_success_rate(stats, "junior")
-            junior_stats = f"""👶 Junior:
+            junior_best_percentage = StatsService.calculate_best_score_percentage(stats, "junior")
+            junior_stats = f"""🎓 Junior:
 • Тестов: {stats.junior_tests}
 • Правильных ответов: {stats.junior_total_correct}/{stats.junior_total_questions}
-• Успешность: {junior_success}%"""
+• Успешность: {junior_success}%
+• Лучший результат: {stats.junior_best_score}/100 ({junior_best_percentage}%)"""
 
         if stats.middle_tests > 0:
             middle_success = StatsService.calculate_level_success_rate(stats, "middle")
+            middle_best_percentage = StatsService.calculate_best_score_percentage(stats, "middle")
             middle_stats = f"""💪 Middle:
 • Тестов: {stats.middle_tests}  
-• Лучший результат: {stats.middle_best_score}/100
-• Успешность: {middle_success}%"""
+• Последний результат: {stats.middle_total_correct}/{stats.middle_total_questions}
+• Успешность: {middle_success}%
+• Лучший результат: {stats.middle_best_score}/100 ({middle_best_percentage}%)"""
 
         if junior_stats and middle_stats:
             stats_section = f"""📊 Ваша статистика:
@@ -245,31 +258,52 @@ async def main_menu(query, context):
 
 Готовы начать? 🚀"""
 
-    # ПОЛНАЯ ОЧИСТКА ВСЕХ СООБЩЕНИЙ БОТА
+    # БЫСТРАЯ ОЧИСТКА - удаляем ВСЕ сообщения кроме текущего
     try:
         chat_id = query.message.chat_id
         current_message_id = query.message.message_id
 
-        print(f"🔍 Полная очистка чата: текущее сообщение ID: {current_message_id}")
+        # Получаем ВСЕ сообщения бота для этого пользователя
+        message_ids = storage.get_user_messages(user_id)
 
-        # Удаляем ВСЕ предыдущие сообщения бота (увеличиваем диапазон)
-        deleted_count = 0
-        for i in range(1, 51):  # увеличиваем до 50 сообщений
-            try:
-                await context.bot.delete_message(chat_id, current_message_id - i)
-                deleted_count += 1
-                print(f"🔍 Удалили сообщение ID: {current_message_id - i}")
-            except Exception as e:
-                # Пропускаем ошибки "сообщение не найдено"
-                if "message to delete not found" not in str(e) and "message can't be deleted" not in str(e):
-                    print(f"⚠️ Ошибка удаления {current_message_id - i}: {e}")
+        # Удаляем пачками по 10 сообщений для скорости
+        batch_size = 10
+        for i in range(0, len(message_ids), batch_size):
+            batch = message_ids[i:i + batch_size]
 
-        print(f"✅ Удалено сообщений: {deleted_count}")
+            # Удаляем только те сообщения, которые не являются текущим
+            messages_to_delete = [msg_id for msg_id in batch if msg_id != current_message_id]
+
+            if messages_to_delete:
+                # Удаляем пачку сообщений параллельно
+                delete_tasks = []
+                for message_id in messages_to_delete:
+                    try:
+                        task = context.bot.delete_message(chat_id, message_id)
+                        delete_tasks.append(task)
+                    except Exception:
+                        # Игнорируем ошибки "message not found"
+                        pass
+
+                # Ждем завершения всех задач удаления в пачке
+                if delete_tasks:
+                    await asyncio.gather(*delete_tasks, return_exceptions=True)
+
+                # Короткая пауза между пачками
+                await asyncio.sleep(0.1)
+
+        print(f"✅ Быстрая очистка завершена. Удалено ~{len(message_ids)} сообщений")
 
     except Exception as e:
-        print(f"⚠️ Не удалось очистить чат: {e}")
+        print(f"⚠️ Ошибка при быстрой очистке: {e}")
 
-    # РЕДАКТИРУЕМ текущее сообщение (оно осталось после очистки)
+    # Очищаем список сообщений пользователя
+    storage.clear_user_messages(user_id)
+
+    # Текущее сообщение добавляем в отслеживание (оно осталось)
+    storage.track_message(user_id, query.message.message_id)
+
+    # РЕДАКТИРУЕМ текущее сообщение (оно НЕ удалено)
     await query.edit_message_text(
         welcome_text,
         reply_markup=create_main_menu_keyboard()
@@ -356,18 +390,17 @@ async def stats_from_menu(query, context):
 {get_feedback(last_score, last_total)}
         """
 
-    # ЗАМЕНИТЬ: await main_menu(query, context) на:
     await query.edit_message_text(
         stats_text,
         reply_markup=create_stats_keyboard()
     )
 
 
-async def process_answer(query, data, context):
+async def process_answer(query, callback_data, context):
     """
-    Обрабатывает ответ пользователя - результат выше, вопрос всегда последний
+    Обрабатывает ответ пользователя
     """
-    parts = data.split('_')
+    parts = callback_data.split('_')
     question_index = int(parts[1])
     answer_index = int(parts[2])
 
@@ -385,7 +418,7 @@ async def process_answer(query, data, context):
     else:
         result_icon = "❌"
         correct_answer_number = question['correct_answer'] + 1
-        result_text = f"Неправильно. Правильный ответ: {correct_answer_number}"
+        result_text = f"Неправильно. \nПравильный ответ: {correct_answer_number}"
 
         # ДЛЯ MIDDLE: неправильный ответ = конец теста
         if level == 'middle':
@@ -397,7 +430,10 @@ async def process_answer(query, data, context):
 💡 {question['explanation']}"""
 
     # 1. Сначала отправляем результат ответа
-    await query.message.reply_text(result_message)
+    result_msg = await query.message.reply_text(result_message)
+
+    # СОХРАНЯЕМ ID сообщения с результатом
+    storage.track_message(query.from_user.id, result_msg.message_id)
 
     # Переходим к следующему вопросу
     context.user_data['current_question'] += 1
@@ -439,6 +475,9 @@ async def show_next_question_always_new(query, context):
         question_text,
         reply_markup=create_quiz_keyboard(question, current_index)
     )
+
+    # СОХРАНЯЕМ ID сообщения
+    storage.track_message(query.from_user.id, message.message_id)
     context.user_data['last_question_message_id'] = message.message_id
 
 
@@ -479,51 +518,66 @@ async def finish_test_from_callback(query, context):
             del context.user_data[key]
 
     # Отправляем результат с кнопками
-    await query.message.reply_text(
+    result_message = await query.message.reply_text(
         result_text,
         reply_markup=create_restart_keyboard(),
         parse_mode='Markdown'
     )
 
+    # СОХРАНЯЕМ ID сообщения с результатом теста
+    storage.track_message(query.from_user.id, result_message.message_id)
+
+
 async def finish_middle_test_early(query, context, questions_answered):
     """
-    Завершает тест Middle при неправильном ответе
+    Завершает тест Middle при неправильном ответе и возвращает в главное меню
     """
     from utils.keyboards import create_restart_keyboard
+    from core.services.stats import StatsService
 
     score = context.user_data['score']
     level = context.user_data.get('level', 'middle')
+    total_questions = len(context.user_data.get('questions', []))
 
     result_text = f"""
 💥 Тест завершен!
 
-В режиме Middle всего одна попытка на вопрос.
+В режиме Middle всего одна попытка на ответ.
 
 📊 Ваш результат:
 • Правильных ответов: {score}/{questions_answered}
 • Вопросов пройдено: {questions_answered}
+• Всего вопросов в тесте: {total_questions}
 
 💡 Попробуйте режим Junior для обучения!
     """
 
-    # СОХРАНЯЕМ РЕЗУЛЬТАТ ТЕСТА С УЧЕТОМ УРОВНЯ
+    # СОХРАНЯЕМ РЕЗУЛЬТАТ ТЕСТА С УЧЕТОМ УРОВНЯ - ВАЖНО: сохраняем общее количество вопросов
     StatsService.save_test_result(
         user_id=query.from_user.id,
         score=score,
-        total_questions=questions_answered,
+        total_questions=total_questions,  # ← ИСПРАВЛЕНИЕ: сохраняем общее количество, а не пройденное
         level=level
     )
 
-    # Очищаем данные
-    for key in ['current_question', 'score', 'questions']:
+    # Сохраняем для отображения в статистике
+    context.user_data['last_score'] = score
+    context.user_data['last_total'] = total_questions
+
+    # Очищаем данные теста, но оставляем статистику для отображения
+    for key in ['current_question', 'score', 'questions', 'last_question_message_id']:
         if key in context.user_data:
             del context.user_data[key]
 
-    await query.message.reply_text(
+    # Отправляем результат с кнопками для продолжения
+    result_message = await query.message.reply_text(
         result_text,
         reply_markup=create_restart_keyboard(),
         parse_mode='Markdown'
     )
+
+    # СОХРАНЯЕМ ID сообщения с результатом теста
+    storage.track_message(query.from_user.id, result_message.message_id)
 
 
 async def confirm_reset_stats(query, context):
@@ -533,7 +587,7 @@ async def confirm_reset_stats(query, context):
     from utils.keyboards import create_confirmation_keyboard
 
     warning_text = """
-⚠️ Внимание! Вы собираетесь сбросить всю статистику**
+⚠️ Внимание! Вы собираетесь сбросить всю статистику!
 
 Это действие:
 • Удалит всю историю тестов
@@ -553,9 +607,6 @@ async def reset_stats(query, context):
     """
     Сбрасывает статистику пользователя и возвращает в главное меню
     """
-    from data.storage import storage
-    import asyncio
-
     user_id = query.from_user.id
 
     # Сбрасываем статистику

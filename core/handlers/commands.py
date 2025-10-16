@@ -2,7 +2,6 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from utils.keyboards import create_main_menu_keyboard
 from core.services.stats import StatsService
-from utils.feedback import get_feedback
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -24,19 +23,22 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if stats and (stats.junior_tests > 0 or stats.middle_tests > 0):
         if stats.junior_tests > 0:
             junior_success = StatsService.calculate_level_success_rate(stats, "junior")
-            junior_stats = f"""👶 Junior:
+            junior_best_percentage = StatsService.calculate_best_score_percentage(stats, "junior")
+            junior_stats = f"""🎓 Junior:
     • Тестов: {stats.junior_tests}
     • Правильных ответов: {stats.junior_total_correct}/{stats.junior_total_questions}
-    • Успешность: {junior_success}%"""
+    • Успешность: {junior_success}%
+    • Лучший результат: {stats.junior_best_score}/100 ({junior_best_percentage}%)"""
 
         if stats.middle_tests > 0:
             middle_success = StatsService.calculate_level_success_rate(stats, "middle")
+            middle_best_percentage = StatsService.calculate_best_score_percentage(stats, "middle")
             middle_stats = f"""💪 Middle:
-    • Тестов: {stats.middle_tests}  
-    • Лучший результат: {stats.middle_best_score}/100
-    • Успешность: {middle_success}%"""
+        • Тестов: {stats.middle_tests}  
+        • Последний результат: {stats.middle_total_correct}/{stats.middle_total_questions}
+        • Успешность: {middle_success}%
+        • Лучший результат: {stats.middle_best_score}/100 ({middle_best_percentage}%)"""
 
-        # Правильное объединение с одним отступом
         if junior_stats and middle_stats:
             stats_section = f"""📊 Ваша статистика:
 

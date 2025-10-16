@@ -26,21 +26,28 @@ class StatsService:
         return storage.get_user_stats(user_id)
 
     @staticmethod
-    def calculate_success_rate(stats):
-        """Рассчитывает процент успешных ответов"""
-        if stats and stats.total_questions_answered > 0:
-            return round((stats.total_correct_answers / stats.total_questions_answered) * 100)
+    def calculate_level_success_rate(stats, level: str):
+        """Рассчитывает процент успешных ответов для конкретного уровня"""
+        if not stats:
+            return 0
+
+        if level == "junior":
+            if stats.junior_total_questions > 0:
+                return round((stats.junior_total_correct / stats.junior_total_questions) * 100)
+        elif level == "middle":
+            # Для Middle считаем успешность последнего теста
+            if stats.middle_total_questions > 0:
+                return round((stats.middle_total_correct / stats.middle_total_questions) * 100)
         return 0
 
     @staticmethod
-    def calculate_level_success_rate(stats, level: str):
-        """Рассчитывает процент успешных ответов для конкретного уровня"""
-        total_questions = 100  # Теперь 100 вопросов
+    def calculate_best_score_percentage(stats, level: str):
+        """Рассчитывает процент лучшего результата"""
+        if not stats:
+            return 0
 
-        if level == "junior":
-            if stats and stats.junior_best_score > 0:
-                return round((stats.junior_best_score / total_questions) * 100)
-        elif level == "middle":
-            if stats and stats.middle_best_score > 0:
-                return round((stats.middle_best_score / 100) * 100)
+        if level == "junior" and stats.junior_best_score > 0:
+            return round((stats.junior_best_score / 100) * 100)
+        elif level == "middle" and stats.middle_best_score > 0:
+            return round((stats.middle_best_score / 100) * 100)
         return 0
