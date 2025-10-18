@@ -80,8 +80,11 @@ async def start_junior_quiz(query, context):
         await query.edit_message_text("❌ Вопросы не найдены!")
         return
 
+    # ПЕРЕМЕШИВАЕМ вопросы в случайном порядке
+    shuffled_questions = QuizService.shuffle_questions(questions)
+
     context.user_data.update({
-        'questions': questions,
+        'questions': shuffled_questions,  # ← Сохраняем перемешанные вопросы
         'current_question': 0,
         'score': 0,
         'level': 'junior'
@@ -95,11 +98,9 @@ async def start_junior_quiz(query, context):
 Удачи! 🍀
     """
 
-    # Редактируем текущее сообщение и СОХРАНЯЕМ его ID для удаления
     await query.edit_message_text(junior_text, reply_markup=None)
-    storage.track_message(query.from_user.id, query.message.message_id)  # ← ДОБАВЛЕНО
+    storage.track_message(query.from_user.id, query.message.message_id)
 
-    # Ждем немного перед началом теста
     await asyncio.sleep(1.5)
     await show_question_from_menu(query, context)
 
@@ -113,8 +114,11 @@ async def start_middle_quiz(query, context):
         await query.edit_message_text("❌ Вопросы не найдены!")
         return
 
+    # ПЕРЕМЕШИВАЕМ вопросы в случайном порядке
+    shuffled_questions = QuizService.shuffle_questions(questions)
+
     context.user_data.update({
-        'questions': questions,
+        'questions': shuffled_questions,  # ← Сохраняем перемешанные вопросы
         'current_question': 0,
         'score': 0,
         'level': 'middle'
@@ -128,11 +132,9 @@ async def start_middle_quiz(query, context):
 Покажите свои настоящие знания! 🚀
     """
 
-    # Редактируем текущее сообщение и СОХРАНЯЕМ его ID для удаления
     await query.edit_message_text(middle_text, reply_markup=None)
-    storage.track_message(query.from_user.id, query.message.message_id)  # ← ДОБАВЛЕНО
+    storage.track_message(query.from_user.id, query.message.message_id)
 
-    # Ждем немного перед началом теста
     await asyncio.sleep(1.5)
     await show_question_from_menu(query, context)
 
@@ -149,13 +151,18 @@ async def show_question_from_menu(query, context):
 
     question, current_index = result
 
+    # ПЕРЕМЕШИВАЕМ варианты ответов
+    shuffled_options, new_correct_index = QuizService.shuffle_options(question)
+
+    # Сохраняем новый индекс правильного ответа в контексте
+    context.user_data[f'correct_index_{current_index}'] = new_correct_index
+
     question_text = f"""
 🎯 Вопрос {current_index + 1}/{len(context.user_data['questions'])}
 {question['question']}
 
-""" + "\n".join([f"{i + 1}. {option}" for i, option in enumerate(question['options'])])
+""" + "\n".join([f"{i + 1}. {option}" for i, option in enumerate(shuffled_options)])
 
-    # Добавляем подсказку для Middle режима
     level = context.user_data.get('level')
     if level == 'middle':
         question_text += "\n\n⚡ Всего 1 попытка!"
@@ -163,10 +170,9 @@ async def show_question_from_menu(query, context):
     # ВСЕГДА отправляем НОВОЕ сообщение с вопросом
     message = await query.message.reply_text(
         question_text,
-        reply_markup=create_quiz_keyboard(question, current_index)
+        reply_markup=create_quiz_keyboard(question, current_index, shuffled_options)
     )
 
-    # СОХРАНЯЕМ ID сообщения
     storage.track_message(query.from_user.id, message.message_id)
     context.user_data['last_question_message_id'] = message.message_id
 
@@ -217,31 +223,31 @@ async def main_menu(query, context):
         if stats.junior_tests > 0:
             junior_success = StatsService.calculate_level_success_rate(stats, "junior")
             junior_best_percentage = StatsService.calculate_best_score_percentage(stats, "junior")
-            junior_stats = f"""🎓 Junior:
-        • Тестов: {stats.junior_tests}
-        • Последний результат: {stats.junior_total_correct}/{stats.junior_total_questions}
-        • Успешность: {junior_success}%
-        • Лучший результат: {stats.junior_best_score}/100 ({junior_best_percentage}%)"""
+            junior_stats = f"""🎓 Junior
+    • Тестов: {stats.junior_tests}
+    • Последний результат: {stats.junior_total_correct}/{stats.junior_total_questions}
+    • Успешность: {junior_success}%
+    • Лучший результат: {stats.junior_best_score}/100 ({junior_best_percentage}%)"""
 
         if stats.middle_tests > 0:
             middle_success = StatsService.calculate_level_success_rate(stats, "middle")
             middle_best_percentage = StatsService.calculate_best_score_percentage(stats, "middle")
-            middle_stats = f"""💪 Middle:
-• Тестов: {stats.middle_tests}  
-• Последний результат: {stats.middle_total_correct}/{stats.middle_total_questions}
-• Успешность: {middle_success}%
-• Лучший результат: {stats.middle_best_score}/100 ({middle_best_percentage}%)"""
+            middle_stats = f"""💪 Middle
+    • Тестов: {stats.middle_tests}
+    • Последний результат: {stats.middle_total_correct}/{stats.middle_total_questions}
+    • Успешность: {middle_success}%
+    • Лучший результат: {stats.middle_best_score}/100 ({middle_best_percentage}%)"""
 
         if junior_stats and middle_stats:
             stats_section = f"""📊 Ваша статистика:
 
-{junior_stats}
+    {junior_stats}
 
-{middle_stats}"""
+    {middle_stats}"""
         else:
             stats_section = f"""📊 Ваша статистика:
 
-{junior_stats}{middle_stats}"""
+    {junior_stats}{middle_stats}"""
     else:
         stats_section = "📊 Статистика: пройдите первый тест!"
 
@@ -249,12 +255,12 @@ async def main_menu(query, context):
 
 Я бот для проверки знаний QA.
 
-{stats_section}
+    {stats_section}
 
-📚 Что вас ждет:
-• 100 вопросов по основам QA
-• Подробные объяснения к каждому ответу  
-• Статистика ваших результатов
+    📚 Что вас ждет:
+    • 100 вопросов по основам QA
+    • Объяснения к каждому ответу  
+    • Статистика ваших результатов
 
 Готовы начать? 🚀"""
 
@@ -408,8 +414,11 @@ async def process_answer(query, callback_data, context):
     question = questions[question_index]
     level = context.user_data.get('level', 'junior')
 
+    # Получаем ПРАВИЛЬНЫЙ индекс из контекста (учитываем перемешивание)
+    correct_index = context.user_data.get(f'correct_index_{question_index}', question['correct_answer'])
+
     # Проверяем правильность ответа
-    is_correct = answer_index == question['correct_answer']
+    is_correct = answer_index == correct_index
 
     if is_correct:
         context.user_data['score'] += 1
@@ -417,8 +426,8 @@ async def process_answer(query, callback_data, context):
         result_text = "Правильно!"
     else:
         result_icon = "❌"
-        correct_answer_number = question['correct_answer'] + 1
-        result_text = f"Неправильно. \nПравильный ответ: {correct_answer_number}"
+        correct_answer_number = correct_index + 1
+        result_text = f"Неправильно!"
 
         # ДЛЯ MIDDLE: неправильный ответ = конец теста
         if level == 'middle':
@@ -459,13 +468,18 @@ async def show_next_question_always_new(query, context):
 
     question, current_index = result
 
+    # ПЕРЕМЕШИВАЕМ варианты ответов
+    shuffled_options, new_correct_index = QuizService.shuffle_options(question)
+
+    # Сохраняем новый индекс правильного ответа в контексте
+    context.user_data[f'correct_index_{current_index}'] = new_correct_index
+
     question_text = f"""
 🎯 Вопрос {current_index + 1}/{len(context.user_data['questions'])}
 {question['question']}
 
-""" + "\n".join([f"{i + 1}. {option}" for i, option in enumerate(question['options'])])
+""" + "\n".join([f"{i + 1}. {option}" for i, option in enumerate(shuffled_options)])
 
-    # Добавляем подсказку для Middle режима
     level = context.user_data.get('level')
     if level == 'middle':
         question_text += "\n\n⚡ Всего 1 попытка!"
@@ -473,10 +487,9 @@ async def show_next_question_always_new(query, context):
     # ВСЕГДА отправляем НОВОЕ сообщение с вопросом
     message = await query.message.reply_text(
         question_text,
-        reply_markup=create_quiz_keyboard(question, current_index)
+        reply_markup=create_quiz_keyboard(question, current_index, shuffled_options)
     )
 
-    # СОХРАНЯЕМ ID сообщения
     storage.track_message(query.from_user.id, message.message_id)
     context.user_data['last_question_message_id'] = message.message_id
 

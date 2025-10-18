@@ -1,16 +1,20 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+import random
 
 
-def create_quiz_keyboard(question, current_index):
+def create_quiz_keyboard(question, current_index, shuffled_options=None):
     """
     Создает клавиатуру для вопроса теста
     """
+    # Используем перемешанные варианты если они есть, иначе оригинальные
+    options = shuffled_options if shuffled_options else question['options']
+
     # Создаем inline-кнопки с группировкой по 2 в ряд
     keyboard = []
-    for i in range(0, len(question['options']), 2):
+    for i in range(0, len(options), 2):
         row = []
         for j in range(2):
-            if i + j < len(question['options']):
+            if i + j < len(options):
                 callback_data = f"answer_{current_index}_{i + j}"
                 row.append(InlineKeyboardButton(
                     f"{i + j + 1}",

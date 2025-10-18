@@ -1,7 +1,32 @@
+import random
 from data.database import load_questions
 
 
 class QuizService:
+    @staticmethod
+    def shuffle_questions(questions):
+        """Перемешивает вопросы в случайном порядке"""
+        shuffled = questions.copy()
+        random.shuffle(shuffled)
+        return shuffled
+
+    @staticmethod
+    def shuffle_options(question):
+        """Перемешивает варианты ответов и возвращает новый correct_answer индекс"""
+        options = question['options'].copy()
+        correct_answer = question['correct_answer']
+
+        # Сохраняем правильный ответ до перемешивания
+        correct_option = options[correct_answer]
+
+        # Перемешиваем варианты
+        random.shuffle(options)
+
+        # Находим новый индекс правильного ответа
+        new_correct_answer = options.index(correct_option)
+
+        return options, new_correct_answer
+
     @staticmethod
     async def get_current_question(context):
         """Возвращает текущий вопрос"""
