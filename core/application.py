@@ -1,5 +1,5 @@
+import os
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
-from config import BOT_TOKEN
 
 from core.handlers.commands import start_command, restart_command, cancel_command
 from core.handlers.callbacks import handle_button_click
@@ -9,7 +9,13 @@ def create_application():
     """
     Создает и настраивает приложение бота
     """
-    # Исправленная инициализация для новой версии библиотеки
+    # Получаем токен из переменных окружения
+    BOT_TOKEN = os.environ.get('BOT_TOKEN')
+
+    if not BOT_TOKEN:
+        raise ValueError("❌ BOT_TOKEN not found in environment variables. "
+                         "Please set BOT_TOKEN in Railway variables.")
+
     application = Application.builder().token(BOT_TOKEN).build()
 
     # Регистрируем обработчики команд
