@@ -6,7 +6,7 @@ from core.services.stats import StatsService
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Главное меню СО статистикой пользователя
+    Главное меню со статистикой пользователя
     """
     user = update.message.from_user
 

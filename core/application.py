@@ -1,6 +1,25 @@
 import os
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
+
+def setup_environment():
+    """Настраивает окружение для разработки и продакшена"""
+    # Проверяем есть ли .env файл
+    if not os.path.exists('.env'):
+        return
+
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+        print("✅ .env file loaded for development")
+    except ImportError:
+        print("⚠️ python-dotenv not installed, but .env file exists")
+
+
+# Вызываем настройку окружения
+setup_environment()
+
+
 from core.handlers.commands import start_command, restart_command, cancel_command
 from core.handlers.callbacks import handle_button_click
 
