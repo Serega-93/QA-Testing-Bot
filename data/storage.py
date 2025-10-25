@@ -107,6 +107,7 @@ class Storage:
             ''', (user.user_id, user.username, user.first_name, user.created_at))
             conn.commit()
 
+
     def get_user_stats(self, user_id: int) -> Optional[UserStats]:
         """Возвращает статистику пользователя"""
         with sqlite3.connect(self.db_path) as conn:

@@ -73,7 +73,7 @@ async def start_test_from_menu(query, context):
 
 async def start_junior_quiz(query, context):
     """
-    Начинает тест в режиме Junior (неограниченные попытки)
+    Начинает тест в режиме Junior
     """
     questions = load_questions()
     if not questions:
@@ -84,7 +84,7 @@ async def start_junior_quiz(query, context):
     shuffled_questions = QuizService.shuffle_questions(questions)
 
     context.user_data.update({
-        'questions': shuffled_questions,  # ← Сохраняем перемешанные вопросы
+        'questions': shuffled_questions,
         'current_question': 0,
         'score': 0,
         'level': 'junior'
@@ -107,7 +107,7 @@ async def start_junior_quiz(query, context):
 
 async def start_middle_quiz(query, context):
     """
-    Начинает тест в режиме Middle (1 попытка на вопрос)
+    Начинает тест в режиме Middle
     """
     questions = load_questions()
     if not questions:
@@ -118,7 +118,7 @@ async def start_middle_quiz(query, context):
     shuffled_questions = QuizService.shuffle_questions(questions)
 
     context.user_data.update({
-        'questions': shuffled_questions,  # ← Сохраняем перемешанные вопросы
+        'questions': shuffled_questions,
         'current_question': 0,
         'score': 0,
         'level': 'middle'
@@ -264,52 +264,10 @@ async def main_menu(query, context):
 
 Готовы начать? 🚀"""
 
-    # БЫСТРАЯ ОЧИСТКА - удаляем ВСЕ сообщения кроме текущего
-    try:
-        chat_id = query.message.chat_id
-        current_message_id = query.message.message_id
+    # 1. ОЧИСТКА СООБЩЕНИЙ через общую функцию
+    await clear_chat_history(query, context)
 
-        # Получаем ВСЕ сообщения бота для этого пользователя
-        message_ids = storage.get_user_messages(user_id)
-
-        # Удаляем пачками по 10 сообщений для скорости
-        batch_size = 10
-        for i in range(0, len(message_ids), batch_size):
-            batch = message_ids[i:i + batch_size]
-
-            # Удаляем только те сообщения, которые не являются текущим
-            messages_to_delete = [msg_id for msg_id in batch if msg_id != current_message_id]
-
-            if messages_to_delete:
-                # Удаляем пачку сообщений параллельно
-                delete_tasks = []
-                for message_id in messages_to_delete:
-                    try:
-                        task = context.bot.delete_message(chat_id, message_id)
-                        delete_tasks.append(task)
-                    except Exception:
-                        # Игнорируем ошибки "message not found"
-                        pass
-
-                # Ждем завершения всех задач удаления в пачке
-                if delete_tasks:
-                    await asyncio.gather(*delete_tasks, return_exceptions=True)
-
-                # Короткая пауза между пачками
-                await asyncio.sleep(0.1)
-
-        print(f"✅ Быстрая очистка завершена. Удалено ~{len(message_ids)} сообщений")
-
-    except Exception as e:
-        print(f"⚠️ Ошибка при быстрой очистке: {e}")
-
-    # Очищаем список сообщений пользователя
-    storage.clear_user_messages(user_id)
-
-    # Текущее сообщение добавляем в отслеживание (оно осталось)
-    storage.track_message(user_id, query.message.message_id)
-
-    # РЕДАКТИРУЕМ текущее сообщение (оно НЕ удалено)
+    # 2. РЕДАКТИРУЕМ текущее сообщение
     await query.edit_message_text(
         welcome_text,
         reply_markup=create_main_menu_keyboard()
@@ -320,34 +278,34 @@ async def restart_from_button(query, context):
     """
     Перезапускает тест при нажатии на кнопку
     """
-    # Очищаем только данные теста, оставляя вопросы
-    questions = context.user_data.get('questions', [])
-    for key in ['current_question', 'score', 'last_question_message_id']:
+
+    await clear_chat_history(query, context)
+
+    # ЗАГРУЖАЕМ ВОПРОСЫ ЗАНОВО
+    questions = load_questions()
+    if not questions:
+        await query.edit_message_text("❌ Вопросы не найдены!")
+        return
+
+    # Очищаем данные теста
+    for key in ['current_question', 'score', 'last_question_message_id', 'questions']:
         if key in context.user_data:
             del context.user_data[key]
 
-    # Восстанавливаем вопросы для нового теста
-    if questions:
-        context.user_data['questions'] = questions
+    # ЗАГРУЖАЕМ НОВЫЕ ВОПРОСЫ
+    context.user_data['questions'] = QuizService.shuffle_questions(questions)
+    context.user_data['current_question'] = 0
+    context.user_data['score'] = 0
 
     restart_text = """
 🔄 Тест начат заново!
-
 Весь прогресс сброшен.
 Удачи! 🍀
     """
 
-    # Редактируем сообщение с результатом
     await query.edit_message_text(restart_text, reply_markup=None)
-
-    # Ждем немного перед началом нового теста
     await asyncio.sleep(1.5)
 
-    # Запускаем новый тест
-    context.user_data['current_question'] = 0
-    context.user_data['score'] = 0
-
-    # Показываем первый вопрос
     await show_question_from_menu(query, context)
 
 
@@ -414,7 +372,7 @@ async def process_answer(query, callback_data, context):
     question = questions[question_index]
     level = context.user_data.get('level', 'junior')
 
-    # Получаем ПРАВИЛЬНЫЙ индекс из контекста (учитываем перемешивание)
+    # Получаем ПРАВИЛЬНЫЙ индекс из контекста
     correct_index = context.user_data.get(f'correct_index_{question_index}', question['correct_answer'])
 
     # Проверяем правильность ответа
@@ -451,7 +409,7 @@ async def process_answer(query, callback_data, context):
         await finish_test_from_callback(query, context)
         return
 
-    # 2. Ждем немного и показываем СЛЕДУЮЩИЙ вопрос (новое сообщение)
+    # 2. Ждем немного и показываем СЛЕДУЮЩИЙ вопрос
     await asyncio.sleep(1)
     await show_next_question_always_new(query, context)
 
@@ -569,7 +527,7 @@ async def finish_middle_test_early(query, context, questions_answered):
     StatsService.save_test_result(
         user_id=query.from_user.id,
         score=score,
-        total_questions=total_questions,  # ← ИСПРАВЛЕНИЕ: сохраняем общее количество, а не пройденное
+        total_questions=total_questions,
         level=level
     )
 
@@ -639,3 +597,61 @@ async def reset_stats(query, context):
     # Ждем 2 секунды и показываем главное меню
     await asyncio.sleep(2)
     await main_menu(query, context)
+
+
+async def clear_chat_history(query, context):
+    """
+    Очищает историю сообщений бота
+    """
+    user_id = query.from_user.id
+    chat_id = query.message.chat_id
+    current_message_id = query.message.message_id
+
+    try:
+        # 1. ОТПРАВЛЯЕМ АНИМИРОВАННОЕ УВЕДОМЛЕНИЕ
+        cleanup_msg = await query.message.reply_text("🧹 Очистка истории...")
+        storage.track_message(user_id, cleanup_msg.message_id)
+
+        # 2. АНИМАЦИЯ ЗАГРУЗКИ
+        dots = ["", ".", "..", "..."]
+        for i in range(8):  # 2 секунды анимации
+            await cleanup_msg.edit_text(f"🧹 Очистка истории{dots[i % 4]}")
+            await asyncio.sleep(0.25)
+
+        # 3. ОСНОВНАЯ ЛОГИКА ОЧИСТКИ (как в варианте 1)
+        message_ids = storage.get_user_messages(user_id)
+        batch_size = 10
+        deleted_count = 0
+
+        for i in range(0, len(message_ids), batch_size):
+            batch = message_ids[i:i + batch_size]
+            messages_to_delete = [msg_id for msg_id in batch if msg_id != current_message_id]
+
+            if messages_to_delete:
+                delete_tasks = []
+                for message_id in messages_to_delete:
+                    try:
+                        task = context.bot.delete_message(chat_id, message_id)
+                        delete_tasks.append(task)
+                    except Exception:
+                        pass
+
+                if delete_tasks:
+                    await asyncio.gather(*delete_tasks, return_exceptions=True)
+                    deleted_count += len(messages_to_delete)
+
+                await asyncio.sleep(0.1)
+
+        # 4. ФИНАЛЬНОЕ УВЕДОМЛЕНИЕ
+        await cleanup_msg.edit_text(f"✅ История очищена ({deleted_count} сообщений)")
+
+        # 5. УДАЛЯЕМ УВЕДОМЛЕНИЕ ЧЕРЕЗ 1.5 СЕКУНДЫ
+        await asyncio.sleep(1.5)
+        await context.bot.delete_message(chat_id, cleanup_msg.message_id)
+
+        # 6. Очищаем список сообщений
+        storage.clear_user_messages(user_id)
+        storage.track_message(user_id, current_message_id)
+
+    except Exception as e:
+        print(f"⚠️ Ошибка при очистке сообщений: {e}")
